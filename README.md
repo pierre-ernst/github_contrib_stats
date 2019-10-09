@@ -18,7 +18,9 @@ A file is considered *source code* when its extension belongs to a [configurable
 
 ## Usage
 `$ java -jar target/github_contrib_stats.jar <PAT> <org> <repo>`
+
 e.g.:
+
 `$ java -jar target/github_contrib_stats.jar baba1234567890baba1234567890baba12345678 elastic elasticsearch`
 
 ## Output Example
