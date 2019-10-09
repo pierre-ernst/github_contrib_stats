@@ -12,7 +12,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 
-public class ContributorCounter {
+public class ContributorCounter implements AutoCloseable {
 
     /**
      * The definition of <i>active</i> contributors:
@@ -23,13 +23,22 @@ public class ContributorCounter {
     private String orgName;
     private String repoName;
     private Date deadline;
+    private GitHub github;
 
-    public ContributorCounter(String org, String repo) {
+    /**
+     * @param pat  GitHub Personal Access Token
+     * @param org  GitHub organization name
+     * @param repo GitHub repository name
+     * @throws IOException
+     */
+    public ContributorCounter(String pat, String org, String repo) throws IOException {
         this.orgName = org;
         this.repoName = repo;
         deadline = Date.from(LocalDate.now().minusDays(TIME_WINDOW_DAYS).atStartOfDay()
                 .atZone(ZoneId.systemDefault())
                 .toInstant());
+
+        github = GitHub.connectUsingOAuth(pat);
     }
 
     /**
@@ -45,10 +54,23 @@ public class ContributorCounter {
      * @throws IOException
      */
     public void count(PrintStream out) throws IOException {
-        GitHub github = GitHub.connect();
 
-        GHOrganization org = github.getOrganization(orgName);
-        GHRepository repo = org.getRepository(repoName);
+        GHOrganization org = null;
+        try {
+            org = github.getOrganization(orgName);
+        } catch (IOException ex) {
+            throw new IOException("Unknown org " + orgName + ", or missing access", ex);
+        }
+
+        GHRepository repo = null;
+        try {
+            repo = org.getRepository(repoName);
+            if (repo == null) {
+                throw new IOException("Unknown repo " + repoName + ", or missing access");
+            }
+        } catch (IOException ex) {
+            throw new IOException("Unknown repo " + repoName + ", or missing access", ex);
+        }
 
         SupportedLanguages supportedLanguages = SupportedLanguages.getInstance();
 
@@ -111,5 +133,10 @@ public class ContributorCounter {
      **/
     private static String getFileType(String path) {
         return path.substring(path.indexOf('.', path.lastIndexOf('/')) + 1).toLowerCase();
+    }
+
+    @Override
+    public void close() throws Exception {
+        // TODO it appears to be no way to close/disconnect the API client
     }
 }
