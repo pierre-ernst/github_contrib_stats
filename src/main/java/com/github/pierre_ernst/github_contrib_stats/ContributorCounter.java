@@ -13,10 +13,7 @@ import java.io.PrintStream;
 import java.nio.file.Files;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.Collection;
-import java.util.Date;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.*;
 
 
 public class ContributorCounter implements AutoCloseable {
@@ -89,59 +86,72 @@ public class ContributorCounter implements AutoCloseable {
         }
 
 
-        Set<GHUser> activeContributors = new HashSet<>();
-        Set<GHUser> rejectedContributors = new HashSet<>();
-        long acceptedFileCounter = 0;
-        long rejectedFileCounter = 0;
+        /**
+         * The boolean value indicates if the given contributor belongs to the org
+         */
+        Map<GHUser, Boolean> contributors = new HashMap<>();
 
+        // For all the commits in the given org/repo within the time window
         for (GHCommit commit : repo.queryCommits().since(deadline).list()) {
-            for (GHCommit.File file : commit.getFiles()) {
-                if (config.getLanguages().contains(getFileType(file.getFileName()))) {
-                    acceptedFileCounter++;
 
-                    if ((commit.getAuthor() != null) && commit.getAuthor().isMemberOf(org)) {
-                        activeContributors.add(commit.getAuthor());
-                    } else {
-                        rejectedContributors.add(commit.getAuthor());
-                    }
-
+            // Only keep the members of the org
+            boolean isMember = false;
+            if (commit.getAuthor() != null) {
+                if (contributors.containsKey(commit.getAuthor())) {
+                    // Membership state is already cached
+                    isMember = contributors.get(commit.getAuthor());
                 } else {
-                    rejectedFileCounter++;
+                    // Get the answer from an API call
+                    isMember = commit.getAuthor().isMemberOf(org);
+                    contributors.put(commit.getAuthor(), false);
+                }
+            }
+
+            if (isMember) {
+
+                // For all the files part of this commit
+                for (GHCommit.File file : commit.getFiles()) {
+
+                    // Only keep source-code file
+                    if (config.getLanguages().contains(getFileType(file.getFileName()))) {
+                        contributors.put(commit.getAuthor(), true);
+                    }
                 }
             }
         }
 
-        out.println("Total number of active   contributors for " + orgName + "/" + repoName + ": " + activeContributors.size());
-        out.println("Total number of rejected contributors for " + orgName + "/" + repoName + ": " + rejectedContributors.size());
-        out.println((int) ((rejectedFileCounter * 100) / (rejectedFileCounter + acceptedFileCounter)) + "% of committed file rejected");
+        int activeCount   = displayContribList(true, contributors, "Active Contributors", out);
+        int inactiveCount = displayContribList(false, contributors, "Inactive Contributors", out);
 
-        displayContribList(activeContributors, "Active Contributors", out);
-        displayContribList(rejectedContributors, "Rejected Contributors", out);
-    }
+        out.println();
+        out.println("Total number of active   contributors for " + orgName + "/" + repoName + ": " + activeCount);
+        out.println("Total number of inactive contributors for " + orgName + "/" + repoName + ": " + inactiveCount);
+     }
 
     private static String toString(GHUser user) throws IOException {
         StringBuilder sb = new StringBuilder();
 
-        if (user == null) {
-            sb.append("<null>");
-        } else {
-            sb.append(user.getLogin()).append(' ');
+             sb.append(user.getLogin()).append(' ');
             if ((user.getName() != null) && (!user.getName().isEmpty())) {
                 sb.append('(').append(user.getName()).append(") ");
             }
             if ((user.getLocation() != null) && (!user.getLocation().isEmpty())) {
                 sb.append(", ").append(user.getLocation()).append(' ');
             }
-        }
 
         return sb.toString();
     }
 
-    private static void displayContribList(Collection<GHUser> list, String title, PrintStream out) throws IOException {
+    private static int displayContribList(boolean isMember, Map<GHUser, Boolean> list, String title, PrintStream out) throws IOException {
+        int count = 0;
         out.println("--- " + title + " ---");
-        for (GHUser contributor : list) {
-            out.println(toString(contributor));
+        for (GHUser contributor : list.keySet()) {
+            if (list.get(contributor) == isMember) {
+                out.println(toString(contributor));
+                count++;
+            }
         }
+        return count;
     }
 
     /**
