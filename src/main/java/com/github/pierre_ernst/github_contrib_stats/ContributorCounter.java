@@ -1,9 +1,16 @@
 package com.github.pierre_ernst.github_contrib_stats;
 
-import org.kohsuke.github.*;
 
+import okhttp3.Cache;
+import okhttp3.OkHttpClient;
+import okhttp3.OkUrlFactory;
+import org.kohsuke.github.*;
+import org.kohsuke.github.extras.OkHttp3Connector;
+
+import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.nio.file.Files;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Collection;
@@ -14,16 +21,11 @@ import java.util.Set;
 
 public class ContributorCounter implements AutoCloseable {
 
-    /**
-     * The definition of <i>active</i> contributors:
-     * <u>e.g.</u> active contributors are GitHub users who committed files within the last <b>90</b> days
-     */
-    private static final int TIME_WINDOW_DAYS = 90;
-
     private String orgName;
     private String repoName;
     private Date deadline;
-    private GitHub github;
+    private GitHub gitHub;
+    private ConfigPOJO config;
 
     /**
      * @param pat  GitHub Personal Access Token
@@ -32,13 +34,27 @@ public class ContributorCounter implements AutoCloseable {
      * @throws IOException
      */
     public ContributorCounter(String pat, String org, String repo) throws IOException {
-        this.orgName = org;
-        this.repoName = repo;
-        deadline = Date.from(LocalDate.now().minusDays(TIME_WINDOW_DAYS).atStartOfDay()
+        orgName = org;
+        repoName = repo;
+
+        config = ConfigPOJO.getInstance();
+
+        deadline = Date.from(LocalDate.now().minusDays(config.getTimeWindow()).atStartOfDay()
                 .atZone(ZoneId.systemDefault())
                 .toInstant());
 
-        github = GitHub.connectUsingOAuth(pat);
+        File cacheDir = Files.createTempDirectory("ContributorCounterCache").toFile();
+        Cache cache = new Cache(cacheDir, 5 * 1024 * 1024); // 5MB cache
+
+        OkHttpClient client = new OkHttpClient.Builder()
+                .cache(cache)
+                .build();
+
+        // TODO wait for the next release of github-api to fix the depreciation warning
+        gitHub = new GitHubBuilder().withOAuthToken(pat)
+                .withConnector(new OkHttp3Connector(new OkUrlFactory(client)))
+                .withRateLimitHandler(RateLimitHandler.WAIT).build();
+
     }
 
     /**
@@ -57,7 +73,7 @@ public class ContributorCounter implements AutoCloseable {
 
         GHOrganization org = null;
         try {
-            org = github.getOrganization(orgName);
+            org = gitHub.getOrganization(orgName);
         } catch (IOException ex) {
             throw new IOException("Unknown org " + orgName + ", or missing access", ex);
         }
@@ -72,7 +88,6 @@ public class ContributorCounter implements AutoCloseable {
             throw new IOException("Unknown repo " + repoName + ", or missing access", ex);
         }
 
-        SupportedLanguages supportedLanguages = SupportedLanguages.getInstance();
 
         Set<GHUser> activeContributors = new HashSet<>();
         Set<GHUser> rejectedContributors = new HashSet<>();
@@ -81,10 +96,10 @@ public class ContributorCounter implements AutoCloseable {
 
         for (GHCommit commit : repo.queryCommits().since(deadline).list()) {
             for (GHCommit.File file : commit.getFiles()) {
-                if (supportedLanguages.contains(getFileType(file.getFileName()))) {
+                if (config.getLanguages().contains(getFileType(file.getFileName()))) {
                     acceptedFileCounter++;
 
-                    if (commit.getAuthor().isMemberOf(org)) {
+                    if ((commit.getAuthor() != null) && commit.getAuthor().isMemberOf(org)) {
                         activeContributors.add(commit.getAuthor());
                     } else {
                         rejectedContributors.add(commit.getAuthor());
@@ -107,12 +122,16 @@ public class ContributorCounter implements AutoCloseable {
     private static String toString(GHUser user) throws IOException {
         StringBuilder sb = new StringBuilder();
 
-        sb.append(user.getLogin()).append(' ');
-        if ((user.getName() != null) && (!user.getName().isEmpty())) {
-            sb.append('(').append(user.getName()).append(") ");
-        }
-        if ((user.getLocation() != null) && (!user.getLocation().isEmpty())) {
-            sb.append(", ").append(user.getLocation()).append(' ');
+        if (user == null) {
+            sb.append("<null>");
+        } else {
+            sb.append(user.getLogin()).append(' ');
+            if ((user.getName() != null) && (!user.getName().isEmpty())) {
+                sb.append('(').append(user.getName()).append(") ");
+            }
+            if ((user.getLocation() != null) && (!user.getLocation().isEmpty())) {
+                sb.append(", ").append(user.getLocation()).append(' ');
+            }
         }
 
         return sb.toString();

@@ -16,6 +16,7 @@
     <properties>
         <maven.compiler.source>11</maven.compiler.source>
         <maven.compiler.target>11</maven.compiler.target>
+        <okhttp.version>3.13.0</okhttp.version>
     </properties>
 
     <dependencies>
@@ -23,6 +24,16 @@
             <groupId>org.kohsuke</groupId>
             <artifactId>github-api</artifactId>
             <version>1.95</version>
+        </dependency>
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp</artifactId>
+            <version>${okhttp.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp-urlconnection</artifactId>
+            <version>${okhttp.version}</version>
         </dependency>
         <dependency>
             <groupId>junit</groupId>

@@ -1,0 +1,14 @@
+{
+  "timeWindow": 90,
+
+  "languages": [
+    "rb",
+    "java",
+    "scala",
+    "py",
+    "go",
+    "cs",
+    "php",
+    "js"
+  ]
+}
